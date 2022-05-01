@@ -13,17 +13,29 @@ class StateEstimator:
         # l_f:      distance from the CG to the front-axle(1.016 m)
         # l_r:      distance from the CG to the rear-axle(1.562 m)
         # m:        total vehicle mass (1416 kg)
-        self.C_r =   0.02
-        self.C_yf =  150
-        self.C_yr =  150
-        self.g =     9.81
-        self.h_c =   7.5
-        self.I_z =   0.0687
-        self.l =     0.32
-        self.l_f =   self.l*0.4
-        self.l_r =   self.l*0.6
-        self.m =     3.3325
+        self.C_r  = 0.02
+        self.C_yf = 150
+        self.C_yr = 150
+        self.g    = 9.81
+        self.h_c  = 7.5
+        self.I_z  = 0.0687
+        self.l    = 0.32
+        self.l_f  = self.l*0.4
+        self.l_r  = self.l*0.6
+        self.m    = 3.3325
 
+        # EKF Parameters
+        self.Qe   = np.diag([10**(-3), 10**(-3)])
+        self.Re   = 10
+
+        # Force UKF Parameters
+        self.Qu   = np.diag([  10**(-3),          107,        103,          400,          850, 675])
+        self.Ru   = np.diag([2*10**(-2), 9.4*10**(-5), 2*10**(-2), 8.6*10**(-5), 6.5*10**(-4)])
+
+        # Friction UKF Paramters
+        self.Qb   = np.diag([5*10**(-6), 5*10**(-6)])
+        self.Rb   = np.diag([6*10**(-5), 6*10**(-5)])
+        
     def vehicle_model(self, v_y, v_x, ohm_z, a_x, delta):
         ''''
         Returns output of vehicle dynamics given the current states and inputs
@@ -87,26 +99,23 @@ class StateEstimator:
 
         return F_yf, F_yr
 
-    def estimate_velocities(self, deltaT, mu_x_k_prev, sigma_x_k_prev, a_x, a_y, ohm_z, v_x_m,  R, Q):
+    def estimate_velocities(self, deltaT, v_hat_x, v_hat_y, a_x, a_y, ohm_z, v_x_m, sigma_x_k_prev):
         '''
         Estimates the current speeds given the previous state estimates and control inputs
 
         input: deltaT: float, timestep
-        input: mu_x_k: 2x1 float array, [v_x, v_y].T longitudinal (x-axis) and lateral (y-axis) velocities estimate from current timestep
+        input: v_x: float, longitudinal (x-axis) velocity estimate from current timestep
+        input: v_y: float, lateral (y-axis) velocity estimate from current timestep
         input: a_x: float, input longitudinal (x-axis) acceleration from IMU
         input: a_y: float, input lateral (y-axis) acceleration from IMU
         input: ohm_z: float, input yaw (z-axis) rate from IMU
         input: v_x_m: float, observed rear wheel mean speed from control input
-        input: R: 2x2 float array, state noise covarian+ce
-        input: Q: 2x2 float array, measurement noise covariance
+        input: sigma_x_k_prev: 2x2 float array: Previous state covariance estimate
         
-        output: v_x: float, longitudinal (x-axis) velocity estimate from next timestep
-        output: v_y: float, lateral (y-axis) velocity estimate from next timestep
+        output: v_x: float, longitudinal (x-axis) velocity estimate
+        output: v_y: float, lateral (y-axis) velocity estimate
+        output: sigma_x_k_k: 2x2 float array: State covariance estimate
         '''
-        # Extract the previous state estimates
-        v_hat_x = mu_x_k_prev[0]
-        v_hat_y = mu_x_k_prev[1]
-
         ## System Dynamics
         # Î¼_x(k+1|k)
         mu_x_k_     = np.array([[v_hat_x + deltaT * ohm_z * v_hat_y + deltaT * a_x],
@@ -117,14 +126,14 @@ class StateEstimator:
                       [ deltaT * ohm_z,        1      ]])
 
         # Î£_x(k+1|k)
-        sigma_x_k_  = A @ sigma_x_k_prev @ A.T + R
+        sigma_x_k_  = A @ sigma_x_k_prev @ A.T + self.Re
 
         ## Observation Step
         # Observation Jacobian for re-use
         C_ = v_hat_x
 
         # Kalman Gain K
-        K           = sigma_x_k_ @ C_.T @ np.linalg.inv(C_ @ sigma_x_k_ @ C_.T + Q)
+        K           = sigma_x_k_ @ C_.T @ np.linalg.inv(C_ @ sigma_x_k_ @ C_.T + self.Qe)
 
         # Î¼_x(k+1|k)
         mu_x_k_k    = mu_x_k_ + K * (v_x_m - mu_x_k_[0])
@@ -132,7 +141,7 @@ class StateEstimator:
         # Î£_x(k+1|k+1)
         sigma_x_k_k = (np.eye(2) - K @ C_) @ sigma_x_k_
 
-        return mu_x_k_k, sigma_x_k_k
+        return mu_x_k_k[0], mu_x_k_k[1], sigma_x_k_k
 
     def tireforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
 
