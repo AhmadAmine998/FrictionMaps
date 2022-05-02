@@ -19,21 +19,21 @@ class StateEstimator:
         self.h_c  = 7.5
         self.I_z  = 0.0687
         self.l    = 0.32
-        self.l_f  = self.l*0.4
-        self.l_r  = self.l*0.6
+        self.l_f  = self.l*0.45
+        self.l_r  = self.l*0.55
         self.m    = 3.3325
 
         # EKF Parameters
-        self.Qe   = 10/1000
-        self.Re   = np.diag([10**(-3), 10**(-3)])*10
+        self.Qe   = 10**(-3)
+        self.Re   = np.diag([10, 10])
 
         # Force UKF Parameters
-        self.Qu   = np.diag([2*10**(-2), 9.4*10**(-5), 2*10**(-2), 8.6*10**(-5), 6.5*10**(-4)])
-        self.Ru   = np.diag([  10**(-3),          107,        103,          400,          850, 675])
+        self.Qu   = np.diag([  10,          107,        103,          400,          850, 675])*1000
+        self.Ru   = np.diag([20, 94, 20, 86, 65])
 
         # Friction UKF Paramters
-        self.Qb   = np.diag([6*10**(-5), 6*10**(-5)])
-        self.Rb   = np.diag([5*10**(-6), 5*10**(-6)])
+        self.Qb   = np.diag([5*10**(-6), 5*10**(-6)])
+        self.Rb   = np.diag([6*10**(-5), 6*10**(-5)])
         
     @staticmethod
     def Pk_m(W_i_prime):
@@ -48,7 +48,7 @@ class StateEstimator:
         return (Wiprime @ Z_center.T) / Z_center.shape[1]
         
     @staticmethod
-    def find_sigma_points(x_k_prev, P_k_prev, Q):
+    def find_sigma_points(x_k_prev, P_k_prev, Q):     
         n   = Q.shape[0]
         S_p = +np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
         S_n = -np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
@@ -59,8 +59,8 @@ class StateEstimator:
         Xi = np.hstack((x_k_prev,Xi))
         return Xi
 
-    @staticmethod
-    def vehicle_model(self, v_y, v_x, ohm_z, a_x, delta):
+    @classmethod
+    def vehicle_model(cls, v_y, v_x, ohm_z, a_x, delta):
         ''''
         Returns output of vehicle dynamics given the current states and inputs
 
@@ -85,7 +85,6 @@ class StateEstimator:
 
         return alpha_f,alpha_r,F_zf,F_zr
     
-    @staticmethod
     def tire_model(self, alpha_f, alpha_r, F_zf, F_zr, mu_f, mu_r):
         '''
         Brushed tire model, returns the front and rear lateral (y-axis) forces
@@ -110,7 +109,7 @@ class StateEstimator:
         else:
             F_f = mu_f * F_zf
         
-        F_yf = - ((self.C_yf**2) * np.tan(alpha_f)) * F_f/q_f
+        F_yf = - ((self.C_yf) * np.tan(alpha_f)) * F_f/q_f
         
         ################  REAR  #########################
         q_r  = np.sqrt((self.C_yr**2) * (np.tan(alpha_r)**2))
@@ -120,7 +119,7 @@ class StateEstimator:
         else:
             F_r = mu_r * F_zr
 
-        F_yr = - ((self.C_yr**2) * np.tan(alpha_r)) * F_r/q_r
+        F_yr = - ((self.C_yr) * np.tan(alpha_r)) * F_r/q_r
 
         return F_yf, F_yr
 
@@ -168,19 +167,18 @@ class StateEstimator:
 
         return mu_x_k_k[0], mu_x_k_k[1], sigma_x_k_k
     
-    @staticmethod
     def tyreforce_observation(self, Yi, delta):
         
         Zi = np.zeros((Yi.shape[0]-1, Yi.shape[1]))
-        for i, point in enumerate(Yi):
+        for i, point in enumerate(Yi.T):
             v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr = point.tolist()
 
             #hU = Observation step
-            Zi[i] = np.array([v_hat_x, 
-                        ohm_hat_z,
-                        v_hat_y,
-                        (1/self.m) *(F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)),
-                        (1/self.m) *(F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta) + F_hat_yr)])
+            Zi[:, i] = np.array([v_hat_x, 
+                                 ohm_hat_z,
+                                 v_hat_y,
+                                 (1/self.m) *(F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)),
+                                 (1/self.m) *(F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta) + F_hat_yr)])
         
         return Zi
 
@@ -188,10 +186,10 @@ class StateEstimator:
 
         x_k_prev = np.array([[v_hat_x], [v_hat_y], [ohm_hat_z], [F_hat_xf], [F_hat_yf], [F_hat_yr]])
 
-        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qbs)
+        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qu)
         Yi = np.zeros_like(Xi)
 
-        for i, point in enumerate(Xi):
+        for i, point in enumerate(Xi.T):
             #fU: Dynamics Step
             v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr = point.tolist()
 
@@ -202,12 +200,12 @@ class StateEstimator:
                         [F_hat_yf],
                         [F_hat_yr]
                         ])
-            Yi[i] = fU
+            Yi[:, i] = fU.flatten()
 
 
 
         # Find the estimates xhatminus and the innovation term
-        mu_x_k  = np.mean(Yi)
+        mu_x_k  = np.mean(Yi, axis=1).reshape(-1,1)
         Wiprime = Yi - mu_x_k
     
         # Pk-
@@ -218,13 +216,13 @@ class StateEstimator:
         Zi  = self.tyreforce_observation(Yi, delta)
 
         # Zk-
-        zk_bar = np.mean(Zi, axis=1)
+        zk_bar = np.mean(Zi, axis=1).reshape(-1,1)
 
         # Centered Zi's
-        Z_center = Zi - zk_bar.reshape(-1,1)
+        Z_center = Zi - zk_bar
         
         # Equation 69
-        Pvv = self.P_zz(Z_center) + self.Rb
+        Pvv = self.P_zz(Z_center) + self.Ru
         
         # Find the innovation (true - estimate)     # Equation 44
         z_k_prev = np.array([[v_x_obs], [ohm_z_obs], [v_y_obs], [a_x], [a_y]])
@@ -278,7 +276,7 @@ class StateEstimator:
         '''
         ## Update Step
         # Find and transform sigma points
-        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qbs)
+        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qb)
         Yi  = Xi.copy()
 
         # Find the estimates xhatminus and the innovation term
