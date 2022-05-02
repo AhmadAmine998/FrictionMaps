@@ -24,16 +24,16 @@ class StateEstimator:
         self.m    = 3.3325
 
         # EKF Parameters
-        self.Qe   = np.diag([10**(-3), 10**(-3)])
-        self.Re   = 10
+        self.Qe   = 10/1000
+        self.Re   = np.diag([10**(-3), 10**(-3)])*10
 
         # Force UKF Parameters
-        self.Qu   = np.diag([  10**(-3),          107,        103,          400,          850, 675])
-        self.Ru   = np.diag([2*10**(-2), 9.4*10**(-5), 2*10**(-2), 8.6*10**(-5), 6.5*10**(-4)])
+        self.Qu   = np.diag([2*10**(-2), 9.4*10**(-5), 2*10**(-2), 8.6*10**(-5), 6.5*10**(-4)])
+        self.Ru   = np.diag([  10**(-3),          107,        103,          400,          850, 675])
 
         # Friction UKF Paramters
-        self.Qb   = np.diag([5*10**(-6), 5*10**(-6)])
-        self.Rb   = np.diag([6*10**(-5), 6*10**(-5)])
+        self.Qb   = np.diag([6*10**(-5), 6*10**(-5)])
+        self.Rb   = np.diag([5*10**(-6), 5*10**(-6)])
         
     @staticmethod
     def Pk_m(W_i_prime):
@@ -155,7 +155,7 @@ class StateEstimator:
 
         ## Observation Step
         # Observation Jacobian for re-use
-        C_ = v_hat_x
+        C_ = np.array([[1, 0]])
 
         # Kalman Gain K
         K           = sigma_x_k_ @ C_.T @ np.linalg.inv(C_ @ sigma_x_k_ @ C_.T + self.Qe)
@@ -184,7 +184,7 @@ class StateEstimator:
         
         return Zi
 
-    def tireforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, P_k_prev, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
+    def tyreforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, P_k_prev, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
 
         x_k_prev = np.array([[v_hat_x], [v_hat_y], [ohm_hat_z], [F_hat_xf], [F_hat_yf], [F_hat_yr]])
 
