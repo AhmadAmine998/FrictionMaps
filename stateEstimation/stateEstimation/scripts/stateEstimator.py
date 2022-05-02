@@ -35,6 +35,31 @@ class StateEstimator:
         self.Qb   = np.diag([5*10**(-6), 5*10**(-6)])
         self.Rb   = np.diag([6*10**(-5), 6*10**(-5)])
         
+    @staticmethod
+    def Pk_m(W_i_prime):
+        return (W_i_prime @ W_i_prime.T) / W_i_prime.shape[1]
+
+    @staticmethod
+    def P_zz(Z_center):
+        return (Z_center @ Z_center.T) / Z_center.shape[1]
+
+    @staticmethod
+    def P_xz(Wiprime, Z_center):
+        return (Wiprime @ Z_center.T) / Z_center.shape[1]
+        
+    @staticmethod
+    def find_sigma_points(x_k_prev, P_k_prev, Q):
+        n   = Q.shape[0]
+        S_p = +np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
+        S_n = -np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
+
+        S   = np.hstack((S_p.copy(), S_n.copy()))
+
+        Xi = x_k_prev + S
+        Xi = np.hstack((x_k_prev,Xi))
+        return Xi
+
+    @staticmethod
     def vehicle_model(self, v_y, v_x, ohm_z, a_x, delta):
         ''''
         Returns output of vehicle dynamics given the current states and inputs
@@ -59,7 +84,8 @@ class StateEstimator:
         F_zr = (self.m*self.g*self.l_f) - (self.m*a_x*self.h_c)/self.l
 
         return alpha_f,alpha_r,F_zf,F_zr
-
+    
+    @staticmethod
     def tire_model(self, alpha_f, alpha_r, F_zf, F_zr, mu_f, mu_r):
         '''
         Brushed tire model, returns the front and rear lateral (y-axis) forces
@@ -141,7 +167,7 @@ class StateEstimator:
         sigma_x_k_k = (np.eye(2) - K @ C_) @ sigma_x_k_
 
         return mu_x_k_k[0], mu_x_k_k[1], sigma_x_k_k
-
+    
     def tireforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
 
         #fU: Dynamics Step
@@ -168,105 +194,75 @@ class StateEstimator:
 
         return v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr
 
-    def TRFC_estimation(self, mu_hat_f, mu_hat_r, F_hat_yf, F_hat_yr, v_y, v_x, ohm_z, a_x, delta):
-        '''
-        
-        '''
-        #F_hat_yf, F_hat_yr = lateral tire forces of the two axles 
-        #alpha_f, alpha_r           = side-slip angles of front- and rear-axle
-        #F_zf, F_zr         = normal forces of front- and rear-axle
-        #mu_f, mu_r         = Unknown parameters
-
-        # Dynamics Step
-        T  = np.array([mu_hat_f,mu_hat_r]).T
-
-        # Observation Step
+    @staticmethod
+    def friction_observation_step(self, Yi, v_y, v_x, ohm_z, a_x, delta):
+        # Check equation 17###
+        Zi = np.zeros_like(Yi)
         alpha_f, alpha_r, F_zf, F_zr = self.vehicle_model(v_y, v_x, ohm_z, a_x, delta)
-        hB    = self.tire_model(alpha_f, alpha_r, F_zf, F_zr, mu_hat_f, mu_hat_r)
-
-        T  = T
-        zB = hB          #hB(T)
-        return
-
-####################################################################
-  
-def find_sigma_points(x_k_prev, P_k_prev, Q):
-    n   = Q.shape[0]
-    S_p = +np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
-    S_n = -np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
-
-    S   = np.hstack((S_p.copy(), S_n.copy()))
-
-    Xi = x_k_prev + S
-    Xi = np.hstack((x_k_prev,Xi))
-    return Xi
-
-def friction_observation_step(self, Yi, v_y, v_x, ohm_z, a_x, delta):
-    # Check equation 17###
-    Zi = np.zeros_like(Yi)
-    alpha_f, alpha_r, F_zf, F_zr = self.vehicle_model(v_y, v_x, ohm_z, a_x, delta)
-    
-    for i, point in enumerate(Yi): 
-        mu_hat_f,mu_hat_r = point[0],point[1]
         
-        hB    = self.tire_model(alpha_f, alpha_r, F_zf, F_zr, mu_hat_f, mu_hat_r)
-        Zi[i] = hB
+        for i, point in enumerate(Yi): 
+            mu_hat_f,mu_hat_r = point[0],point[1]
+            
+            hB    = self.tire_model(alpha_f, alpha_r, F_zf, F_zr, mu_hat_f, mu_hat_r)
+            Zi[i] = hB
 
-    return Zi
+        return Zi
 
-# Equation 64
-def Pk_m(W_i_prime):
-    return (W_i_prime @ W_i_prime.T) / W_i_prime.shape[1]
+    def TRFC_estimation(self, x_k_prev, z_k_prev, P_k_prev, v_y, v_x, ohm_z, a_x, delta):
+        '''
+        Updates the estimate of the tire-road friction coefficients for both tires
 
-# Equation 70
-def P_zz(Z_center):
-    return (Z_center @ Z_center.T) / Z_center.shape[1]
+        input: x_k_prev: 2x1 float array, mu_f, mu_r previous estimates of the TRFC 
+        input: P_k_prev: 2x2 float array, previous estimates of the covariances of the TRFC 
+        input: z_k_prev: 2x1 float array, F_hat_yf, F_hat_yr lateral tire forces of the two tires
+        input: v_y: float, lateral (y-axis) velocity of the vehicle
+        input: v_x: float, longitudinal (x-axis) velocity of the vehicle
+        input: ohm_z: float, Yaw rate of the vehicle
+        input: a_x: float, longitudinal (x-axis) acceleration
+        input: a_y: float, lateral (y-axis) acceleration
+        input: delta: float, input steering angle
+        '''
+        ## Update Step
+        # Find and transform sigma points
+        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qbs)
+        Yi  = Xi.copy()
 
-def P_xz(Wiprime, Z_center):
-    return (Wiprime @ Z_center.T) / Z_center.shape[1]
-
-def updateFrictionPrediction(x_k_prev, P_k_prev, z_k_prev, Q, R):
-    ## Update Step
-    # Find and transform sigma points
-    Xi  = find_sigma_points(x_k_prev, P_k_prev, Q)
-    Yi  = Xi.copy()
-
-    # Find the estimates xhatminus and the innovation term
-    mu_x_k  = np.mean(Yi)
-    Wiprime = Yi - mu_x_k
- 
-    # Pk-
-    sigma_x_k = Pk_m(Wiprime)
-
-    ## Observation Step
-    # Incorporate observation models H1 & H2
-    Zi  = friction_observation_step(Yi)
-
-    # Zk-
-    zk_bar = np.mean(Zi, axis=1)
-
-    # Centered Zi's
-    Z_center = Zi - zk_bar.reshape(-1,1)
+        # Find the estimates xhatminus and the innovation term
+        mu_x_k  = np.mean(Yi)
+        Wiprime = Yi - mu_x_k
     
-    # Equation 69
-    Pvv = P_zz(Z_center) + R
-    
-    # Find the innovation (true - estimate)     # Equation 44
-    v_k = (z_k_prev - zk_bar)
+        # Pk-
+        sigma_x_k = self.Pk_m(Wiprime)
 
-    # Equation 70
-    Pxz = P_xz(Wiprime, Z_center)
+        ## Observation Step
+        # Incorporate observation models H1 & H2
+        Zi  = self.friction_observation_step(Yi, v_y, v_x, ohm_z, a_x, delta)
 
-    # Find the kalman gain # Equation 72
-    Kk  = Pxz @ np.linalg.inv(Pvv)
+        # Zk-
+        zk_bar = np.mean(Zi, axis=1)
 
-    # Find the estimate of the state covariance # Equation 75
-    sigma_x_k_p  = sigma_x_k - Kk @ Pvv @ Kk.T
+        # Centered Zi's
+        Z_center = Zi - zk_bar.reshape(-1,1)
+        
+        # Equation 69
+        Pvv = self.P_zz(Z_center) + self.Rb
+        
+        # Find the innovation (true - estimate)     # Equation 44
+        v_k = (z_k_prev - zk_bar)
 
-    # X update
-    update     = Kk @ v_k
-    
-    # Add angle-axis x to angle-axis estimate
-    x_hat_k = mu_x_k + update
+        # Equation 70
+        Pxz = self.P_xz(Wiprime, Z_center)
 
-    return x_hat_k, sigma_x_k_p
+        # Find the kalman gain # Equation 72
+        Kk  = Pxz @ np.linalg.inv(Pvv)
+
+        # Find the estimate of the state covariance # Equation 75
+        sigma_x_k_p  = sigma_x_k - Kk @ Pvv @ Kk.T
+
+        # X update
+        update     = Kk @ v_k
+        
+        # Add angle-axis x to angle-axis estimate
+        x_hat_k = mu_x_k + update
+
+        return x_hat_k, sigma_x_k_p
