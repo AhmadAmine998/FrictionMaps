@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class StateEstimator:
     def __init__(self):
         # C_r:      rolling resistance coefficient (0.02)
@@ -179,3 +178,86 @@ class StateEstimator:
         T  = T
         zB = hB          #hB(T)
         return
+
+####################################################################
+  
+def find_sigma_points(x_k_prev, P_k_prev, Q):
+    n   = Q.shape[0]
+    S_p = +np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
+    S_n = -np.sqrt(n)*np.linalg.cholesky(P_k_prev + Q)
+
+    S   = np.hstack((S_p.copy(), S_n.copy()))
+
+    Xi = x_k_prev + S
+    Xi = np.hstack((x_k_prev,Xi))
+    return Xi
+
+def friction_observation_step(self, Yi, v_y, v_x, ohm_z, a_x, delta):
+    # Check equation 17###
+    Zi = np.zeros_like(Yi)
+    alpha_f, alpha_r, F_zf, F_zr = self.vehicle_model(v_y, v_x, ohm_z, a_x, delta)
+    
+    for i, point in enumerate(Yi): 
+        mu_hat_f,mu_hat_r = point[0],point[1]
+        
+        hB    = self.tire_model(alpha_f, alpha_r, F_zf, F_zr, mu_hat_f, mu_hat_r)
+        Zi[i] = hB
+
+    return Zi
+
+# Equation 64
+def Pk_m(W_i_prime):
+    return (W_i_prime @ W_i_prime.T) / W_i_prime.shape[1]
+
+# Equation 70
+def P_zz(Z_center):
+    return (Z_center @ Z_center.T) / Z_center.shape[1]
+
+def P_xz(Wiprime, Z_center):
+    return (Wiprime @ Z_center.T) / Z_center.shape[1]
+
+def updateFrictionPrediction(x_k_prev, P_k_prev, z_k_prev, Q, R):
+    ## Update Step
+    # Find and transform sigma points
+    Xi  = find_sigma_points(x_k_prev, P_k_prev, Q)
+    Yi  = Xi.copy()
+
+    # Find the estimates xhatminus and the innovation term
+    mu_x_k  = np.mean(Yi)
+    Wiprime = Yi - mu_x_k
+ 
+    # Pk-
+    sigma_x_k = Pk_m(Wiprime)
+
+    ## Observation Step
+    # Incorporate observation models H1 & H2
+    Zi  = friction_observation_step(Yi)
+
+    # Zk-
+    zk_bar = np.mean(Zi, axis=1)
+
+    # Centered Zi's
+    Z_center = Zi - zk_bar.reshape(-1,1)
+    
+    # Equation 69
+    Pvv = P_zz(Z_center) + R
+    
+    # Find the innovation (true - estimate)     # Equation 44
+    v_k = (z_k_prev - zk_bar)
+
+    # Equation 70
+    Pxz = P_xz(Wiprime, Z_center)
+
+    # Find the kalman gain # Equation 72
+    Kk  = Pxz @ np.linalg.inv(Pvv)
+
+    # Find the estimate of the state covariance # Equation 75
+    sigma_x_k_p  = sigma_x_k - Kk @ Pvv @ Kk.T
+
+    # X update
+    update     = Kk @ v_k
+    
+    # Add angle-axis x to angle-axis estimate
+    x_hat_k = mu_x_k + update
+
+    return x_hat_k, sigma_x_k_p
