@@ -168,31 +168,85 @@ class StateEstimator:
 
         return mu_x_k_k[0], mu_x_k_k[1], sigma_x_k_k
     
-    def tireforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
+    @staticmethod
+    def tyreforce_observation(self, Yi, delta):
+        
+        Zi = np.zeros((Yi.shape[0]-1, Yi.shape[1]))
+        for i, point in enumerate(Yi):
+            v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr = point.tolist()
 
-        #fU: Dynamics Step
-        fU = np.array([[v_hat_x + (deltaT * ohm_hat_z * v_hat_y) + ((deltaT/self.m) * (F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)))],
-                       [ohm_hat_z + deltaT * (self.l_f/self.I_z) * (F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta)) - deltaT * (self.l_r/self.I_z) * F_hat_yr],
-                       [v_hat_y - (deltaT * ohm_hat_z * v_hat_x) + ((deltaT/self.m) * (F_hat_xf * np.sin(delta) - F_hat_yf * np.cos(delta) + F_hat_yr))],
-                       [F_hat_xf],
-                       [F_hat_yf],
-                       [F_hat_yr]
-                      ])
+            #hU = Observation step
+            Zi[i] = np.array([v_hat_x, 
+                        ohm_hat_z,
+                        v_hat_y,
+                        (1/self.m) *(F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)),
+                        (1/self.m) *(F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta) + F_hat_yr)])
+        
+        return Zi
 
-        #hU = Observation step
-        hU = np.array([v_hat_x, 
-                       ohm_hat_z,
-                       v_hat_y,
-                       (1/self.m) *(F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)),
-                       (1/self.m) *(F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta) + F_hat_yr)])
+    def tireforce_estimates(self, v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr, P_k_prev, v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y, delta, deltaT):
 
-        # TO DO: FIND INNOVATION AS hU - (v_x_obs, ohm_z_obs, v_y_obs, a_x, a_y)
+        x_k_prev = np.array([[v_hat_x], [v_hat_y], [ohm_hat_z], [F_hat_xf], [F_hat_yf], [F_hat_yr]])
 
-        #discrete-time state-space system model
-        xU = fU # xU = fU(xU, uU) + Noise (wU)
-        zU = hU # hU(xU) + Noise(vU)
+        Xi  = self.find_sigma_points(x_k_prev, P_k_prev, self.Qbs)
+        Yi = np.zeros_like(Xi)
 
-        return v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr
+        for i, point in enumerate(Xi):
+            #fU: Dynamics Step
+            v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr = point.tolist()
+
+            fU = np.array([[v_hat_x + (deltaT * ohm_hat_z * v_hat_y) + ((deltaT/self.m) * (F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)))],
+                        [ohm_hat_z + deltaT * (self.l_f/self.I_z) * (F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta)) - deltaT * (self.l_r/self.I_z) * F_hat_yr],
+                        [v_hat_y - (deltaT * ohm_hat_z * v_hat_x) + ((deltaT/self.m) * (F_hat_xf * np.sin(delta) - F_hat_yf * np.cos(delta) + F_hat_yr))],
+                        [F_hat_xf],
+                        [F_hat_yf],
+                        [F_hat_yr]
+                        ])
+            Yi[i] = fU
+
+
+
+        # Find the estimates xhatminus and the innovation term
+        mu_x_k  = np.mean(Yi)
+        Wiprime = Yi - mu_x_k
+    
+        # Pk-
+        sigma_x_k = self.Pk_m(Wiprime)
+
+        ## Observation Step
+        # Incorporate observation models H1 & H2
+        Zi  = self.tyreforce_observation(Yi, delta)
+
+        # Zk-
+        zk_bar = np.mean(Zi, axis=1)
+
+        # Centered Zi's
+        Z_center = Zi - zk_bar.reshape(-1,1)
+        
+        # Equation 69
+        Pvv = self.P_zz(Z_center) + self.Rb
+        
+        # Find the innovation (true - estimate)     # Equation 44
+        z_k_prev = np.array([[v_x_obs], [ohm_z_obs], [v_y_obs], [a_x], [a_y]])
+        v_k = (z_k_prev - zk_bar)
+
+        # Equation 70
+        Pxz = self.P_xz(Wiprime, Z_center)
+
+        # Find the kalman gain # Equation 72
+        Kk  = Pxz @ np.linalg.inv(Pvv)
+
+        # Find the estimate of the state covariance # Equation 75
+        sigma_x_k_p = sigma_x_k - Kk @ Pvv @ Kk.T
+
+        # X update
+        update = Kk @ v_k
+        
+        # Add angle-axis x to angle-axis estimate
+        x_hat_k = mu_x_k + update
+
+        return x_hat_k, sigma_x_k_p
+
 
     @staticmethod
     def friction_observation_step(self, Yi, v_y, v_x, ohm_z, a_x, delta):
