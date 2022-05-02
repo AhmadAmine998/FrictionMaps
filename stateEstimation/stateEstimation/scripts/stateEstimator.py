@@ -28,12 +28,12 @@ class StateEstimator:
         self.Re   = np.diag([10, 10])
 
         # Force UKF Parameters
-        self.Qu   = np.diag([  10,          107,        103,          400,          850, 675])*1000
+        self.Qu   = np.diag([  10,          107,        103,          400,          850, 675])*100
         self.Ru   = np.diag([20, 94, 20, 86, 65])
 
         # Friction UKF Paramters
-        self.Qb   = np.diag([5*10**(-6), 5*10**(-6)])
-        self.Rb   = np.diag([6*10**(-5), 6*10**(-5)])
+        self.Qb   = np.diag([10**(-4), 10**(-4)])
+        self.Rb   = np.diag([10**(4), 10**(4)])
         
     @staticmethod
     def Pk_m(W_i_prime):
@@ -59,8 +59,7 @@ class StateEstimator:
         Xi = np.hstack((x_k_prev,Xi))
         return Xi
 
-    @classmethod
-    def vehicle_model(cls, v_y, v_x, ohm_z, a_x, delta):
+    def vehicle_model(self, v_y, v_x, ohm_z, a_x, delta):
         ''''
         Returns output of vehicle dynamics given the current states and inputs
 
@@ -76,12 +75,12 @@ class StateEstimator:
         output: F_zr: float, rear tire normal force
         '''
         #Side-slip angles of the front -'alpha_f' and rear-tires - 'alpha_r'
-        alpha_f = ((v_y + (self.l_f * ohm_z))/v_x) - delta
+        alpha_f = (v_y + (self.l_f * ohm_z))/v_x - delta
         alpha_r = (v_y - (self.l_r * ohm_z))/v_x
 
         #The instantaneous normal forces acting on the front 'F_zf'and rear-axle 'f_zr' tires
-        F_zf = (self.m*self.g*self.l_r) - (self.m*a_x*self.h_c)/self.l
-        F_zr = (self.m*self.g*self.l_f) - (self.m*a_x*self.h_c)/self.l
+        F_zf = ((self.m*self.g*self.l_r) - (self.m*a_x*self.h_c))/self.l
+        F_zr = ((self.m*self.g*self.l_f) + (self.m*a_x*self.h_c))/self.l
 
         return alpha_f,alpha_r,F_zf,F_zr
     
@@ -105,7 +104,7 @@ class StateEstimator:
         q_f  = np.sqrt((self.C_yf**2) * (np.tan(alpha_f)**2))
 
         if  q_f <= 3 * mu_f * F_zf:
-            F_f = q_f  - (q_f**2/(3 * mu_f * F_zf)) +  (q_f**3/(27 * mu_f * F_zf**2)) 
+            F_f = q_f  - ((q_f**2)/(3 * mu_f * F_zf)) +  ((q_f**3)/(27 * mu_f**2 * F_zf**2)) 
         else:
             F_f = mu_f * F_zf
         
@@ -115,7 +114,7 @@ class StateEstimator:
         q_r  = np.sqrt((self.C_yr**2) * (np.tan(alpha_r)**2))
 
         if q_r <= 3 * mu_r * F_zr:
-            F_r = q_r - (q_r**2/(3 * mu_r * F_zr)) +  (q_r**3/(27 * mu_r * F_zr**2)) 
+            F_r = q_r - (q_r**2/(3 * mu_r * F_zr)) +  (q_r**3/(27 * mu_r**2 * F_zr**2)) 
         else:
             F_r = mu_r * F_zr
 
@@ -143,11 +142,11 @@ class StateEstimator:
         ## System Dynamics
         # Î¼_x(k+1|k)
         mu_x_k_     = np.array([[v_hat_x + deltaT * ohm_z * v_hat_y + deltaT * a_x],
-                                [v_hat_y + deltaT * ohm_z * v_hat_x + deltaT * a_y]])
+                                [v_hat_y - deltaT * ohm_z * v_hat_x + deltaT * a_y]])
         
         # Jacobian of the nonlinear system dynamics
         A = np.array([[        1      , deltaT * ohm_z],
-                      [ deltaT * ohm_z,        1      ]])
+                      [-deltaT * ohm_z,        1      ]])
 
         # Î£_x(k+1|k)
         sigma_x_k_  = A @ sigma_x_k_prev @ A.T + self.Re
@@ -194,12 +193,12 @@ class StateEstimator:
             v_hat_x, v_hat_y, ohm_hat_z, F_hat_xf, F_hat_yf, F_hat_yr = point.tolist()
 
             fU = np.array([[v_hat_x + (deltaT * ohm_hat_z * v_hat_y) + ((deltaT/self.m) * (F_hat_xf * np.cos(delta) - F_hat_yf * np.sin(delta)))],
-                        [ohm_hat_z + deltaT * (self.l_f/self.I_z) * (F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta)) - deltaT * (self.l_r/self.I_z) * F_hat_yr],
-                        [v_hat_y - (deltaT * ohm_hat_z * v_hat_x) + ((deltaT/self.m) * (F_hat_xf * np.sin(delta) - F_hat_yf * np.cos(delta) + F_hat_yr))],
-                        [F_hat_xf],
-                        [F_hat_yf],
-                        [F_hat_yr]
-                        ])
+                           [ohm_hat_z + deltaT * (self.l_f/self.I_z) * (F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta)) - deltaT * (self.l_r/self.I_z) * F_hat_yr],
+                           [v_hat_y - (deltaT * ohm_hat_z * v_hat_x) + ((deltaT/self.m) * (F_hat_xf * np.sin(delta) + F_hat_yf * np.cos(delta) + F_hat_yr))],
+                           [F_hat_xf],
+                           [F_hat_yf],
+                           [F_hat_yr]
+                           ])
             Yi[:, i] = fU.flatten()
 
 
@@ -246,17 +245,16 @@ class StateEstimator:
         return x_hat_k, sigma_x_k_p
 
 
-    @staticmethod
     def friction_observation_step(self, Yi, v_y, v_x, ohm_z, a_x, delta):
         # Check equation 17###
         Zi = np.zeros_like(Yi)
         alpha_f, alpha_r, F_zf, F_zr = self.vehicle_model(v_y, v_x, ohm_z, a_x, delta)
         
-        for i, point in enumerate(Yi): 
+        for i, point in enumerate(Yi.T): 
             mu_hat_f,mu_hat_r = point[0],point[1]
             
             hB    = self.tire_model(alpha_f, alpha_r, F_zf, F_zr, mu_hat_f, mu_hat_r)
-            Zi[i] = hB
+            Zi[:, i] = hB
 
         return Zi
 
@@ -280,7 +278,7 @@ class StateEstimator:
         Yi  = Xi.copy()
 
         # Find the estimates xhatminus and the innovation term
-        mu_x_k  = np.mean(Yi)
+        mu_x_k  = np.mean(Yi).reshape(-1,1)
         Wiprime = Yi - mu_x_k
     
         # Pk-
@@ -291,10 +289,10 @@ class StateEstimator:
         Zi  = self.friction_observation_step(Yi, v_y, v_x, ohm_z, a_x, delta)
 
         # Zk-
-        zk_bar = np.mean(Zi, axis=1)
+        zk_bar = np.mean(Zi, axis=1).reshape(-1,1)
 
         # Centered Zi's
-        Z_center = Zi - zk_bar.reshape(-1,1)
+        Z_center = Zi - zk_bar
         
         # Equation 69
         Pvv = self.P_zz(Z_center) + self.Rb

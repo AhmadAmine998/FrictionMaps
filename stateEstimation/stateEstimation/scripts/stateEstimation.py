@@ -38,7 +38,7 @@ def index_from_time(inputTime, possibleTimes):
     return np.argmin(np.abs(inputTime - possibleTimes))
 
 if __name__ == '__main__':
-    dataSetNumber = 1
+    dataSetNumber = 2
     dataSetPath = 'DataSets/DS'+str(dataSetNumber)
     pfPose  = np.loadtxt(dataSetPath+'/pfPoseData.csv', delimiter=',', skiprows=1)[:,1:]
     pfOdom  = np.loadtxt(dataSetPath+'/pfOdomData.csv', delimiter=',', skiprows=1)[:,1:]
@@ -77,6 +77,16 @@ if __name__ == '__main__':
     F_hat_yr   = np.zeros_like(stateTime)
     sigma_f_k  = np.zeros((stateTime.shape[0], 6, 6))
 
+    # State Initialization for friction UKF
+    mu_hat_f_k_m  = 1
+    mu_hat_r_k_m  = 1
+    sigma_mu_k_m  = np.diag([10, 10])
+
+    # Friction UKF outputs used for plotting
+    mu_r_hat    = np.zeros_like(stateTime)
+    mu_f_hat    = np.zeros_like(stateTime)
+    sigma_mu_k  = np.zeros((stateTime.shape[0], 2, 2))
+
     for i, t in enumerate(stateTime):
         # Recursive after initialization
         if i > 0:
@@ -92,6 +102,10 @@ if __name__ == '__main__':
             F_hat_yr_k_m  = F_hat_yr[i-1]
             sigma_f_k_m   = sigma_f_k[i-1].copy()
 
+            mu_hat_f_k_m  = mu_f_hat[i-1]
+            mu_hat_r_k_m  = mu_r_hat[i-1]
+            sigma_mu_k_m  = sigma_mu_k[i-1].copy()
+
         # IMU Data
         a_x   = imuData[index_from_time(t, imuTime), VESC_HEADER.index('ax')]
         a_y   = imuData[index_from_time(t, imuTime), VESC_HEADER.index('ay')]
@@ -105,15 +119,26 @@ if __name__ == '__main__':
         v_hat_x[i], v_hat_y[i], sigma_v_k[i] = TRFC_Filter.estimate_velocities(deltaT, v_hat_x_k_m, v_hat_y_k_m, a_x, a_y, ohm_z, v_x_m, sigma_v_k_m)
 
         # UKF Update 
-        x_hat_k, sigma_f_k[i] = TRFC_Filter.tyreforce_estimates(v_hat_x[i], v_hat_y[i], ohm_hat_z_k_m, F_hat_xf_k_m, F_hat_yf_k_m, F_hat_yr_k_m, sigma_f_k_m, v_hat_x[i], ohm_z, v_hat_y[i], a_x, a_y, delta, deltaT)
+        f_hat_k, sigma_f_k[i] = TRFC_Filter.tyreforce_estimates(v_hat_x[i], v_hat_y[i], ohm_hat_z_k_m, F_hat_xf_k_m, F_hat_yf_k_m, F_hat_yr_k_m, sigma_f_k_m, v_hat_x[i], ohm_z, v_hat_y[i], a_x, a_y, delta, deltaT)
         
         # Extract states from state vector
-        v_hat_x[i]   = x_hat_k[0]
-        v_hat_y[i]   = x_hat_k[1]
-        ohm_hat_z[i] = x_hat_k[2]
-        F_hat_xf[i]  = x_hat_k[3] 
-        F_hat_yf[i]  = x_hat_k[4]
-        F_hat_yr[i]  = x_hat_k[5]
+        v_hat_x[i]   = f_hat_k[0]
+        v_hat_y[i]   = f_hat_k[1]
+        ohm_hat_z[i] = f_hat_k[2]
+        F_hat_xf[i]  = -f_hat_k[3] 
+        F_hat_yf[i]  = -f_hat_k[4]
+        F_hat_yr[i]  = -f_hat_k[5]
+        
+        #UKF Update 
+        mu_hat_k, sigma_mu_k[i] = TRFC_Filter.TRFC_estimation(np.array([[mu_hat_f_k_m],[mu_hat_r_k_m]]), 
+                                                              np.array([[F_hat_yf[i]],[F_hat_yr[i]]]), sigma_mu_k_m,  
+                                                              v_hat_y[i], v_hat_x[i], ohm_hat_z[i], a_x, delta)
+                
+        # Extract states from state vector
+        mu_f_hat[i]   = mu_hat_k[0]
+        mu_r_hat[i]   = mu_hat_k[1]               
+                                                            
+
 
     plt.figure()
     v_x =  pfOdom[:, ODOM_HEADER.index('vx')]
@@ -126,7 +151,7 @@ if __name__ == '__main__':
     plt.plot(v_y, c='green')
     plt.plot(v_hat_y, c='red')
     plt.title("Vy Superimposed")
-    # plt.show()
+    plt.show()
     
     plt.figure()
     ohm_z =  imuData[:, VESC_HEADER.index('wz')]
@@ -136,24 +161,28 @@ if __name__ == '__main__':
     # plt.show()
 
     plt.figure()
-    a_x = imuData[:, VESC_HEADER.index('ax')]
+    a_x = imuData[:, VESC_HEADER.index('ax')] * TRFC_Filter.m
     plt.plot(a_x, c='green')
-    plt.plot(F_hat_xf/100, c='red')
+    plt.plot(F_hat_xf, c='red')
     plt.title("ax Superimposed")
     # plt.show()
 
     plt.figure()
-    a_y = imuData[:, VESC_HEADER.index('ay')]
+    a_y = imuData[:, VESC_HEADER.index('ay')] * TRFC_Filter.m
     plt.plot(a_y, c='green')
-    plt.plot(F_hat_yf/100, c='red')
-    plt.plot(F_hat_yr/100, c='blue')
+    plt.plot(F_hat_yf, c='red')
+    plt.plot(F_hat_yr, c='blue')
     plt.title("ay Superimposed")
-    # plt.show()
-
-    x_loc   = pfPose[:, 2]
-    y_loc   = pfPose[:, 3]
-    plt.figure()
-    plt.scatter(x_loc, y_loc)
     plt.show()
+
+    plt.plot(mu_r_hat)
+    plt.plot(mu_f_hat)
+    plt.show()
+    
+    # x_loc   = pfPose[:, 2]
+    # y_loc   = pfPose[:, 3]
+    # plt.figure()
+    # plt.scatter(x_loc, y_loc)
+    # plt.show()
     print("HELLO THERE")
     
