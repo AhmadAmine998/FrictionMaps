@@ -51,6 +51,7 @@ if __name__ == '__main__':
     stateTime =  pfPose[:, POSE_HEADER.index('s')] +  pfPose[:, POSE_HEADER.index('ns')]*10**(-9)
     imuTime   = imuData[:, VESC_HEADER.index('s')] + imuData[:, VESC_HEADER.index('ns')]*10**(-9)
     cmdTime   = cmdData[:, ACKR_HEADER.index('s')] + cmdData[:, ACKR_HEADER.index('ns')]*10**(-9)
+    pfTime    = pfOdom[:, ODOM_HEADER.index('s')] + pfOdom[:, ODOM_HEADER.index('ns')]*10**(-9)
 
     # State Initialization for speed EKF
     deltaT      = 0
@@ -113,7 +114,7 @@ if __name__ == '__main__':
 
         # Command input to VESC
         # v_x_m = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('V')]
-        v_x_m   = pfOdom[index_from_time(t, cmdTime), ODOM_HEADER.index('vx')]
+        v_x_m   = pfOdom[index_from_time(t, pfTime), ODOM_HEADER.index('vx')]
         delta = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('delta')]
 
         # EKF Update Step
