@@ -12,16 +12,18 @@ class StateEstimator:
         # l_f:      distance from the CG to the front-axle(1.016 m)
         # l_r:      distance from the CG to the rear-axle(1.562 m)
         # m:        total vehicle mass (1416 kg)
-        self.C_r  = 0.02
-        self.C_yf = 150
-        self.C_yr = 150
-        self.g    = 9.81
-        self.h_c  = 7.5*10**(-2) #cm
-        self.I_z  = 0.0687
-        self.l    = 0.32
-        self.l_f  = self.l*0.35
-        self.l_r  = self.l*0.65
-        self.m    = 3.3325
+        self.C_r  = 0.02          # rolling resistence
+        self.C_yf = 150           # N/rad
+        self.C_yr = 150           # N/rad
+        self.g    = 9.81          # m/s2
+        self.h_c  = 7.5*10**(-2)  # m
+        self.I_z  = 0.0687        # kgm2
+        self.l    = 0.32          # m
+        self.l_f  = self.l*0.35   # m
+        self.l_r  = self.l*0.65   # m
+        self.m    = 3.3325        # kg
+        self.tire_circ    = 0.319 # m
+        self.total_ratio  = 11.85 # Gear Ratio
 
         # EKF Parameters
         self.Qe   = 10**(-3)

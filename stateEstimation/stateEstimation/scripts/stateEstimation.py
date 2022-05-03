@@ -18,6 +18,7 @@ VESC_HEADER = ['s','ns','phi_r','phi_p', 'phi_y', 'ax', 'ay', 'az', 'wx', 'wy', 
 ACKR_HEADER = ['s','ns','V','delta']
 ODOM_HEADER = ['s', 'ns', 'vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'x', 'y', 'q.x','q.y','q.z','q.w']
 SCAN_HEADER = ['s', 'ns', 'amax', 'amin', 'ai', 'ti', 'st', 'rmin', 'rmax']
+CORE_HEADER = ['s', 'ns', 'cM', 'cI', 'DC', 'RPM', 'VI', 'ED', 'ER']
 
 r = []
 I = []
@@ -37,8 +38,18 @@ def index_from_time(inputTime, possibleTimes):
     '''
     return np.argmin(np.abs(inputTime - possibleTimes))
 
+def padArray(A, size):
+    t = size - len(A)
+    if t >= 0:
+        return np.pad(A, pad_width=(t, 0), mode='constant')
+    else: 
+        return A[:t]
+
+Idx1 = [1000,   50,   50,   50,   50]
+Idx2 = [2000, 1800, 1200, 1000, 1000]
+
 if __name__ == '__main__':
-    dataSetNumber = 3
+    dataSetNumber = 5
     dataSetPath = 'DataSets/DS'+str(dataSetNumber)
     pfPose  = np.loadtxt(dataSetPath+'/pfPoseData.csv', delimiter=',', skiprows=1)[:,1:]
     pfOdom  = np.loadtxt(dataSetPath+'/pfOdomData.csv', delimiter=',', skiprows=1)[:,1:]
@@ -53,6 +64,11 @@ if __name__ == '__main__':
     cmdTime   = cmdData[:, ACKR_HEADER.index('s')] + cmdData[:, ACKR_HEADER.index('ns')]*10**(-9)
     pfTime    = pfOdom[:, ODOM_HEADER.index('s')] + pfOdom[:, ODOM_HEADER.index('ns')]*10**(-9)
 
+    if dataSetNumber == 5:
+        # Motor RPM only available for dataset 5
+        coreData= np.loadtxt(dataSetPath+'/coreData.csv', delimiter=',', skiprows=1)[:,1:]
+        coreTime  = coreData[:, CORE_HEADER.index('s')] + coreData[:, CORE_HEADER.index('ns')]*10**(-9)
+        
     # State Initialization for speed EKF
     deltaT      = 0
     v_hat_x_k_m = 0.2
@@ -115,6 +131,11 @@ if __name__ == '__main__':
         # Command input to VESC
         # v_x_m = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('V')]
         v_x_m   = pfOdom[index_from_time(t, pfTime), ODOM_HEADER.index('vx')]
+        if dataSetNumber == 5:
+            # Motor RPM only available for dataset 5
+            v_x_m   = -(coreData[index_from_time(t, coreTime), CORE_HEADER.index('RPM')] * TRFC_Filter.tire_circ * 0.4)/(60 * TRFC_Filter.total_ratio)
+        
+
         delta = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('delta')]
 
         # EKF Update Step
@@ -127,9 +148,9 @@ if __name__ == '__main__':
         v_hat_x[i]   = f_hat_k[0]
         v_hat_y[i]   = f_hat_k[1]
         ohm_hat_z[i] = f_hat_k[2]
-        F_hat_xf[i]  = f_hat_k[3]
-        F_hat_yf[i]  = f_hat_k[4]
-        F_hat_yr[i]  = f_hat_k[5]
+        F_hat_xf[i]  = -f_hat_k[3]/100
+        F_hat_yf[i]  = -f_hat_k[4]/100
+        F_hat_yr[i]  = -f_hat_k[5]/100
         
         #UKF Update 
         mu_hat_k, sigma_mu_k[i] = TRFC_Filter.TRFC_estimation(np.array([[mu_hat_f_k_m],[mu_hat_r_k_m]]), 
@@ -143,7 +164,7 @@ if __name__ == '__main__':
 
     plt.figure()
     v_x =  pfOdom[:, ODOM_HEADER.index('vx')]
-    v_x = np.insert(v_x, 0, v_x[0])
+    v_x = padArray(v_x, stateTime.shape[0])
     plt.plot(stateTime, v_x, c='green', label='PF Vx')
     plt.plot(stateTime, v_hat_x, c='red', label='v_hat_x')
     plt.title("Vx Superimposed")
@@ -153,8 +174,8 @@ if __name__ == '__main__':
     plt.legend()
 
     plt.figure()
-    v_y =  pfOdom[:, ODOM_HEADER.index('vy')]
-    v_y = np.insert(v_y, 0, v_y[0])
+    v_y = pfOdom[:, ODOM_HEADER.index('vy')]
+    v_y = padArray(v_y, stateTime.shape[0])
     plt.plot(stateTime, v_y, c='green', label='PF Vy')
     plt.plot(stateTime, v_hat_y, c='red', label='v_hat_y')
     plt.title("Vy Superimposed")
@@ -166,6 +187,7 @@ if __name__ == '__main__':
     
     plt.figure()
     ohm_z =  imuData[:, VESC_HEADER.index('wz')]
+    ohm_z = padArray(ohm_z, stateTime.shape[0])
     plt.plot(stateTime, ohm_z, c='green', label='IMU ohm_z')
     plt.plot(stateTime, ohm_hat_z, c='red', label='ohm_hat_z')
     plt.title("Wz Superimposed")
@@ -177,8 +199,9 @@ if __name__ == '__main__':
 
     plt.figure()
     a_x = imuData[:, VESC_HEADER.index('ax')]
+    a_x = padArray(a_x, stateTime.shape[0])
     plt.plot(stateTime, a_x, c='green', label='IMU ax')
-    plt.plot(stateTime, F_hat_xf/100, c='red', label='F_hat_xf')
+    plt.plot(stateTime, F_hat_xf, c='red', label='F_hat_xf')
     plt.ylabel("Acceleration (m/s/s)")
     plt.xlabel("Time (s)")
     plt.xlim(stateTime[0], stateTime[-1])
@@ -188,9 +211,10 @@ if __name__ == '__main__':
 
     plt.figure()
     a_y = imuData[:, VESC_HEADER.index('ay')]
+    a_y = padArray(a_y, stateTime.shape[0])
     plt.plot(stateTime, a_y, c='green', label='IMU ay')
-    plt.plot(stateTime, F_hat_yf/100, c='red', label='F_hat_yf')
-    plt.plot(stateTime, F_hat_yr/100, c='blue', label='F_hat_yr')
+    plt.plot(stateTime, F_hat_yf, c='red', label='F_hat_yf')
+    plt.plot(stateTime, F_hat_yr, c='blue', label='F_hat_yr')
     plt.ylabel("Acceleration (m/s/s)")
     plt.xlabel("Time (s)")
     plt.xlim(stateTime[0], stateTime[-1])
@@ -208,12 +232,17 @@ if __name__ == '__main__':
     plt.title("mu Superimposed")
     plt.show()
 
-    x_loc   = pfPose[1200:, 2]
-    y_loc   = pfPose[1200:, 3]
-    c = mu_r_hat[1200:]
+    #  
+    idx1 = Idx1[dataSetNumber - 1]
+    idx2 = Idx2[dataSetNumber - 1]
+
+    x_loc   = pfPose[idx1:idx2, 2]
+    y_loc   = pfPose[idx1:idx2, 3]
+    c = mu_r_hat[idx1:idx2]
     c = (c - np.min(c))
     c /= np.max(c)
     plt.figure()
+    c = 1-c
     plt.scatter(x_loc, y_loc, c=c)
     plt.xlabel("x (m)")
     plt.ylabel("y (m)")
