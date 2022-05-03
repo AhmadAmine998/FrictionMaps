@@ -16,11 +16,11 @@ class StateEstimator:
         self.C_yf = 150
         self.C_yr = 150
         self.g    = 9.81
-        self.h_c  = 7.5
+        self.h_c  = 7.5*10**(-2) #cm
         self.I_z  = 0.0687
         self.l    = 0.32
-        self.l_f  = self.l*0.45
-        self.l_r  = self.l*0.55
+        self.l_f  = self.l*0.35
+        self.l_r  = self.l*0.65
         self.m    = 3.3325
 
         # EKF Parameters
@@ -278,7 +278,7 @@ class StateEstimator:
         Yi  = Xi.copy()
 
         # Find the estimates xhatminus and the innovation term
-        mu_x_k  = np.mean(Yi).reshape(-1,1)
+        mu_x_k  = np.mean(Yi, axis=1).reshape(-1,1)
         Wiprime = Yi - mu_x_k
     
         # Pk-

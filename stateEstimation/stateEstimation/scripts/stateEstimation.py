@@ -38,7 +38,7 @@ def index_from_time(inputTime, possibleTimes):
     return np.argmin(np.abs(inputTime - possibleTimes))
 
 if __name__ == '__main__':
-    dataSetNumber = 2
+    dataSetNumber = 3
     dataSetPath = 'DataSets/DS'+str(dataSetNumber)
     pfPose  = np.loadtxt(dataSetPath+'/pfPoseData.csv', delimiter=',', skiprows=1)[:,1:]
     pfOdom  = np.loadtxt(dataSetPath+'/pfOdomData.csv', delimiter=',', skiprows=1)[:,1:]
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
     # State Initialization for speed EKF
     deltaT      = 0
-    v_hat_x_k_m = 0
+    v_hat_x_k_m = 0.2
     v_hat_y_k_m = 0
     sigma_v_k_m = np.diag([0.4, 0.4])
 
@@ -112,7 +112,8 @@ if __name__ == '__main__':
         ohm_z = imuData[index_from_time(t, imuTime), VESC_HEADER.index('wz')]
 
         # Command input to VESC
-        v_x_m = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('V')]
+        # v_x_m = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('V')]
+        v_x_m   = pfOdom[index_from_time(t, cmdTime), ODOM_HEADER.index('vx')]
         delta = cmdData[index_from_time(t, cmdTime), ACKR_HEADER.index('delta')]
 
         # EKF Update Step
@@ -125,9 +126,9 @@ if __name__ == '__main__':
         v_hat_x[i]   = f_hat_k[0]
         v_hat_y[i]   = f_hat_k[1]
         ohm_hat_z[i] = f_hat_k[2]
-        F_hat_xf[i]  = -f_hat_k[3] 
-        F_hat_yf[i]  = -f_hat_k[4]
-        F_hat_yr[i]  = -f_hat_k[5]
+        F_hat_xf[i]  = f_hat_k[3]
+        F_hat_yf[i]  = f_hat_k[4]
+        F_hat_yr[i]  = f_hat_k[5]
         
         #UKF Update 
         mu_hat_k, sigma_mu_k[i] = TRFC_Filter.TRFC_estimation(np.array([[mu_hat_f_k_m],[mu_hat_r_k_m]]), 
@@ -178,11 +179,16 @@ if __name__ == '__main__':
     plt.plot(mu_r_hat)
     plt.plot(mu_f_hat)
     plt.show()
-    
-    # x_loc   = pfPose[:, 2]
-    # y_loc   = pfPose[:, 3]
-    # plt.figure()
-    # plt.scatter(x_loc, y_loc)
-    # plt.show()
+
+    x_loc   = pfPose[1200:, 2]
+    y_loc   = pfPose[1200:, 3]
+    c = mu_r_hat[1200:]
+    c = (c - np.min(c))
+    c /= np.max(c)
+    plt.figure()
+    plt.scatter(x_loc, y_loc, c=c)
+    plt.colorbar()
+    plt.show()
+
     print("HELLO THERE")
     
