@@ -161,7 +161,8 @@ if __name__ == '__main__':
         mu_f_hat[i]   = mu_hat_k[0]
         mu_r_hat[i]   = mu_hat_k[1]               
                                                             
-
+    stateTime = stateTime - stateTime[0]
+    
     plt.figure()
     v_x =  pfOdom[:, ODOM_HEADER.index('vx')]
     v_x = padArray(v_x, stateTime.shape[0])
