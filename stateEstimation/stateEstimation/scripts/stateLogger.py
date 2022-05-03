@@ -16,8 +16,9 @@ from rclpy.duration import Duration
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
-from vesc_msgs.msg import VescImuStamped
+from vesc_msgs.msg import VescImuStamped, VescStateStamped
 from ackermann_msgs.msg import AckermannDriveStamped
+from sensor_msgs.msg import LaserScan
 from datetime import datetime
 import pandas as pd
 
@@ -25,14 +26,13 @@ POSE_HEADER = ['s','ns','x','y','q.x','q.y','q.z','q.w']
 VESC_HEADER = ['s','ns','phi_r','phi_p', 'phi_y', 'ax', 'ay', 'az', 'wx', 'wy', 'wz', 'q.x','q.y','q.z','q.w']
 ACKR_HEADER = ['s','ns','V','delta']
 ODOM_HEADER = ['s', 'ns', 'vx', 'vy', 'vz', 'wx', 'wy', 'wz', 'x', 'y', 'q.x','q.y','q.z','q.w']
-SCAN_HEADER = ['s', 'ns', 'amax', 'amin', 'ai', 'ti', 'st', 'rmin', 'rmax']
+SCAN_HEADER = ['s', 'ns', 'amin', 'amax', 'ai', 'ti', 'st', 'rmin', 'rmax']
+CORE_HEADER = ['s', 'ns', 'cM', 'cI', 'DC', 'RPM', 'VI', 'ED', 'ER']
 
 r = []
-I = []
-for i in range(1080):
+for i in range(1081):
     r += ['r' + str(i)]
-    I += ['I' + str(i)]
-SCAN_HEADER += r + I
+SCAN_HEADER += r
 
 class stateEstimation(Node):
     def __init__(self, session):
@@ -43,7 +43,44 @@ class stateEstimation(Node):
         self.cmd_sub  = self.create_subscription(AckermannDriveStamped, "/ackermann_cmd", self.cmd_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, "/odom", self.odom_callback, 10)
         self.pf_odom_sub = self.create_subscription(Odometry, "/pf/pose/odom", self.pf_odom_callback, 10)
-        self.scansub = self.create_subscription(Odometry, "/scan", self.scan_callback, 10)
+        self.scansub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
+        self.coresub = self.create_subscription(VescStateStamped, "/sensors/core", self.core_callback, 10)
+
+    def core_callback(self, core_msg):
+        """
+        Callback function for subscribing to VESC core sensor data.
+        This funcion saves the current VESC State to a csv
+
+        Args: 
+            core_msg (VescStateStamped): incoming message from subscribed topic
+        """
+        header = core_msg.header
+        state  = core_msg.state
+
+        # Timestamp
+        timestamp = header.stamp
+        seconds   = timestamp.sec
+        nanosec   = timestamp.nanosec
+
+        # Motor Stats
+        MC     = state.current_motor
+        CI     = state.current_input
+        DC     = state.duty_cycle
+        RPM    = state.speed
+
+        # Energy
+        ED     = state.energy_drawn
+        ER     = state.energy_regen
+        VI     = state.voltage_input
+
+        df = pd.DataFrame([[seconds, nanosec, MC, CI, DC, RPM, VI, ED, ER]], columns=CORE_HEADER)
+        filename = 'state_logs/'+self.folderName+'/coreData.csv'
+        # if file does not exist write header 
+        if not os.path.isfile(filename):
+            df.to_csv(filename, header=True)
+        else: # else it exists so append without writing the header
+            df.to_csv(filename, mode='a', header=False)
+        return
 
     def scan_callback(self, scan_msg):
         """
@@ -67,8 +104,7 @@ class stateEstimation(Node):
         range_min       = scan_msg.range_min
         range_max       = scan_msg.range_max
         ranges          = scan_msg.ranges
-        intensities     = scan_msg.intensities
-
+        
         toSave = np.hstack((seconds,
                             nanosec,
                             angle_min,
@@ -78,9 +114,8 @@ class stateEstimation(Node):
                             scan_time,
                             range_min,
                             range_max,
-                            ranges,
-                            intensities ))
-
+                            ranges)).reshape(1,-1)
+                            
         df = pd.DataFrame(toSave, columns=SCAN_HEADER)
         filename = 'state_logs/'+self.folderName+'/scanData.csv'
         # if file does not exist write header 
