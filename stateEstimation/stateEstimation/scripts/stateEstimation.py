@@ -233,8 +233,13 @@ if __name__ == '__main__':
     plt.show()
 
     #  
-    idx1 = Idx1[dataSetNumber - 1]
-    idx2 = Idx2[dataSetNumber - 1]
+    try:
+        idx1 = Idx1[dataSetNumber - 1]
+        idx2 = Idx2[dataSetNumber - 1]
+    except:
+        print("WARNING! Custom dataset detected. Make sure friction localization plots are satisfactory. Otherwise add your slices to Idx1 and Idx2")
+        idx1 = 50
+        idx2 = -1
 
     x_loc   = pfPose[idx1:idx2, 2]
     y_loc   = pfPose[idx1:idx2, 3]
@@ -249,6 +254,3 @@ if __name__ == '__main__':
     plt.title("Localized Scaled Friction")
     plt.colorbar()
     plt.show()
-
-    print("HELLO THERE")
-    

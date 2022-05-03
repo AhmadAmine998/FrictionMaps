@@ -1,29 +1,34 @@
 import numpy as np
 
 class StateEstimator:
-    def __init__(self):
-        # C_r:      rolling resistance coefficient (0.02)
-        # C_yf:     front-axle cornering stiffness (N/rad)
-        # C_yr:     rear-axle cornering stiffness (N/rad)
-        # g:        gravity acceleration (9.81 m/s2)
-        # h_c:      height of the center of gravity (CG)(0.54 m)
-        # I_z:      vehicle yaw moment of inertia(1523 kg m2)
-        # l:        vehicle wheel base (2.578 m)
-        # l_f:      distance from the CG to the front-axle(1.016 m)
-        # l_r:      distance from the CG to the rear-axle(1.562 m)
-        # m:        total vehicle mass (1416 kg)
-        self.C_r  = 0.02          # rolling resistence
-        self.C_yf = 150           # N/rad
-        self.C_yr = 150           # N/rad
-        self.g    = 9.81          # m/s2
-        self.h_c  = 7.5*10**(-2)  # m
-        self.I_z  = 0.0687        # kgm2
-        self.l    = 0.32          # m
-        self.l_f  = self.l*0.35   # m
-        self.l_r  = self.l*0.65   # m
-        self.m    = 3.3325        # kg
-        self.tire_circ    = 0.319 # m
-        self.total_ratio  = 11.85 # Gear Ratio
+    def __init__(self, c_r=0.02, c_yf=150, c_yr=150, G=9.81, H_c=0.075, i_z=0.0687, L=0.32, L_f=0.35, L_r=0.65, M=3.3325, TireCirc=0.319, GearRatio=11.85):
+        '''
+        Initializes the TRFC State Estimator. L_f and L_r are the weight distribution of the car in ratio. (i.e a 60:40 car has l_f=0.6, l_r=0.4)
+        '''
+        # C_r:          rolling resistance coefficient (0.02)
+        # C_yf:         front-axle cornering stiffness (N/rad)
+        # C_yr:         rear-axle cornering stiffness (N/rad)
+        # g:            gravity acceleration (9.81 m/s2)
+        # h_c:          height of the center of gravity (CG)(0.54 m)
+        # I_z:          vehicle yaw moment of inertia(1523 kg m2)
+        # l:            vehicle wheel base (2.578 m)
+        # l_f:          distance from the CG to the front-axle(1.016 m)
+        # l_r:          distance from the CG to the rear-axle(1.562 m)
+        # m:            total vehicle mass (1416 kg)
+        # tire_circ:    circumference of vehicle's tires
+        # total_ratio:  total gear ratio of vehicle from motor to wheels
+        self.C_r  = c_r               # rolling resistence
+        self.C_yf = c_yf              # N/rad
+        self.C_yr = c_yr              # N/rad
+        self.g    = G                 # m/s2
+        self.h_c  = H_c               # m
+        self.I_z  = i_z               # kgm2
+        self.l    = L                 # m
+        self.l_f  = self.l*L_f        # m
+        self.l_r  = self.l*L_r        # m
+        self.m    = M                 # kg
+        self.tire_circ    = TireCirc  # m
+        self.total_ratio  = GearRatio # Gear Ratio
 
         # EKF Parameters
         self.Qe   = 10**(-3)
