@@ -140,44 +140,71 @@ if __name__ == '__main__':
         mu_r_hat[i]   = mu_hat_k[1]               
                                                             
 
-
     plt.figure()
     v_x =  pfOdom[:, ODOM_HEADER.index('vx')]
-    plt.plot(v_x, c='green')
-    plt.plot(v_hat_x, c='red')
+    v_x = np.insert(v_x, 0, v_x[0])
+    plt.plot(stateTime, v_x, c='green', label='PF Vx')
+    plt.plot(stateTime, v_hat_x, c='red', label='v_hat_x')
     plt.title("Vx Superimposed")
+    plt.ylabel("Velocity (m/s)")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
 
     plt.figure()
     v_y =  pfOdom[:, ODOM_HEADER.index('vy')]
-    plt.plot(v_y, c='green')
-    plt.plot(v_hat_y, c='red')
+    v_y = np.insert(v_y, 0, v_y[0])
+    plt.plot(stateTime, v_y, c='green', label='PF Vy')
+    plt.plot(stateTime, v_hat_y, c='red', label='v_hat_y')
     plt.title("Vy Superimposed")
+    plt.ylabel("Velocity (m/s)")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
     plt.show()
     
     plt.figure()
     ohm_z =  imuData[:, VESC_HEADER.index('wz')]
-    plt.plot(ohm_z, c='green')
-    plt.plot(ohm_hat_z, c='red')
+    plt.plot(stateTime, ohm_z, c='green', label='IMU ohm_z')
+    plt.plot(stateTime, ohm_hat_z, c='red', label='ohm_hat_z')
     plt.title("Wz Superimposed")
+    plt.ylabel("Angular Frequency (rad/s)")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
     # plt.show()
 
     plt.figure()
-    a_x = imuData[:, VESC_HEADER.index('ax')] * TRFC_Filter.m
-    plt.plot(a_x, c='green')
-    plt.plot(F_hat_xf, c='red')
+    a_x = imuData[:, VESC_HEADER.index('ax')]
+    plt.plot(stateTime, a_x, c='green', label='IMU ax')
+    plt.plot(stateTime, F_hat_xf/100, c='red', label='F_hat_xf')
+    plt.ylabel("Acceleration (m/s/s)")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
     plt.title("ax Superimposed")
     # plt.show()
 
     plt.figure()
-    a_y = imuData[:, VESC_HEADER.index('ay')] * TRFC_Filter.m
-    plt.plot(a_y, c='green')
-    plt.plot(F_hat_yf, c='red')
-    plt.plot(F_hat_yr, c='blue')
+    a_y = imuData[:, VESC_HEADER.index('ay')]
+    plt.plot(stateTime, a_y, c='green', label='IMU ay')
+    plt.plot(stateTime, F_hat_yf/100, c='red', label='F_hat_yf')
+    plt.plot(stateTime, F_hat_yr/100, c='blue', label='F_hat_yr')
+    plt.ylabel("Acceleration (m/s/s)")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
     plt.title("ay Superimposed")
     plt.show()
 
-    plt.plot(mu_r_hat)
-    plt.plot(mu_f_hat)
+    plt.plot(stateTime, mu_r_hat, label='mu_r_hat')
+    plt.plot(stateTime, mu_f_hat, label='mu_f_hat')
+    plt.plot(stateTime, 0.65*np.ones_like(stateTime), c='green', label='mu concrete')
+    plt.ylabel("Friction Coefficient")
+    plt.xlabel("Time (s)")
+    plt.xlim(stateTime[0], stateTime[-1])
+    plt.legend()
+    plt.title("mu Superimposed")
     plt.show()
 
     x_loc   = pfPose[1200:, 2]
@@ -187,6 +214,9 @@ if __name__ == '__main__':
     c /= np.max(c)
     plt.figure()
     plt.scatter(x_loc, y_loc, c=c)
+    plt.xlabel("x (m)")
+    plt.ylabel("y (m)")
+    plt.title("Localized Scaled Friction")
     plt.colorbar()
     plt.show()
 
