@@ -35,7 +35,7 @@ This csv file includes the IMU data read from the VESC. This data is calibrated 
 | q.z | Orientation quaternion z component|
 | q.w | Orientation quaternion w component|
 
-### Odometry Data
+### PF Odometry Data
 This csv file includes the odometry data induced from the particle filter. This csv file logs the following data with the following column naming:
 | Column       | Description |
 | ----------- | ----------- |
@@ -57,26 +57,6 @@ This csv file includes the odometry data induced from the particle filter. This 
 
 ### Odometry Data
 This csv file includes the odometry data induced from ROS. This csv file logs the following data with the following column naming:
-| Column       | Description |
-| ----------- | ----------- |
-|         | Pandas generated index, should be ignored|
-|    S    | Timestamp seconds of this record       |
-|    ns   | Timestamp nanoseconds of this record        |
-| vx | Longitudinal (x-axis) velocity in meters per second|
-| vy | Lateral (y-axis) velocity in meters per second|
-| vz | Vertical (z-axis) velocity in meters per second|
-| wx | Longitudinal (x-axis) angular frequency in radians per second|
-| wy | Lateral (y-axis) angular frequency in radians per second|
-| wz | Vertical (z-axis) angular frequency in radians per second|
-| x | Longitudinal (x-axis) position in meters|
-| y | Lateral (y-axis) position in meters|
-| q.x | Orientation quaternion x component|
-| q.y | Orientation quaternion y component|
-| q.z | Orientation quaternion z component|
-| q.w | Orientation quaternion w component|
-
-### PF Odometry Data
-This csv file includes the odometry data induced from the particle filter. This csv file logs the following data with the following column naming:
 | Column       | Description |
 | ----------- | ----------- |
 |         | Pandas generated index, should be ignored|
